@@ -93,18 +93,10 @@
     overflow: hidden;
   }
   .row {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 12px;
-    align-items: center;
-    min-height: 56px;
-    padding: 10px 16px;
     position: relative;
-    user-select: none;
-    -webkit-user-select: none;
+    overflow: hidden;
     background: var(--grouped-bg);
-    transition: background 0.12s ease;
-    cursor: pointer;
+    touch-action: pan-y;
   }
   .row + .row::before {
     content: "";
@@ -112,18 +104,58 @@
     left: 16px; right: 0; top: 0;
     height: 0.5px;
     background: var(--separator);
+    z-index: 3;
+    pointer-events: none;
   }
-  .row.pressed { background: var(--fill-pressed); }
-  .row.flash-up { animation: flashUp 220ms ease-out; }
-  .row.flash-down { animation: flashDown 220ms ease-out; }
-  @keyframes flashUp {
-    0% { background: rgba(48, 209, 88, 0.28); }
-    100% { background: var(--grouped-bg); }
+
+  .row-front {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    min-height: 56px;
+    padding: 10px 16px;
+    background: var(--grouped-bg);
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+    will-change: transform;
   }
-  @keyframes flashDown {
-    0% { background: rgba(255, 69, 58, 0.28); }
-    100% { background: var(--grouped-bg); }
+
+  .row-actions {
+    position: absolute;
+    top: 0; bottom: 0;
+    display: flex;
+    z-index: 1;
+    opacity: 0;
+    pointer-events: none;
   }
+  .row.swipe-active .row-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .row-actions.left  { left: 0; }
+  .row-actions.right { right: 0; }
+  .action-btn {
+    border: none;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 0;
+    width: 88px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: -0.1px;
+  }
+  .action-btn:active { filter: brightness(0.9); }
+  .action-rename { background: #5e5ce6; }
+  .action-set    { background: #ff9f0a; }
+  .action-delete { background: var(--red); }
 
   .name {
     font-size: 17px;
@@ -141,20 +173,6 @@
     min-width: 44px;
     text-align: right;
   }
-  .menu-btn {
-    background: transparent;
-    border: none;
-    color: var(--tertiary-label);
-    width: 32px; height: 32px;
-    border-radius: 8px;
-    font-size: 20px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .menu-btn:active { background: var(--fill); }
 
   .empty {
     text-align: center;
@@ -350,45 +368,6 @@
   .modal-actions button + button { border-left: 0.5px solid var(--separator); }
   .modal-actions .confirm { font-weight: 600; }
 
-  /* iOS action sheet */
-  .sheet-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: none;
-    align-items: flex-end;
-    justify-content: center;
-    padding: 8px;
-    z-index: 100;
-  }
-  .sheet-backdrop.open { display: flex; }
-  .sheet {
-    width: 100%;
-    max-width: 540px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .sheet-group, .sheet-cancel {
-    background: var(--modal-bg);
-    border-radius: 14px;
-    overflow: hidden;
-  }
-  .sheet button {
-    width: 100%;
-    padding: 16px;
-    font-size: 20px;
-    background: transparent;
-    border: none;
-    color: var(--blue);
-    cursor: pointer;
-    min-height: 56px;
-  }
-  .sheet button + button { border-top: 0.5px solid var(--separator); }
-  .sheet button:active { background: var(--fill); }
-  .sheet .destructive { color: var(--red); }
-  .sheet-cancel button { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -422,18 +401,6 @@
   </div>
 </div>
 
-<div id="sheet" class="sheet-backdrop" role="dialog" aria-modal="true">
-  <div class="sheet">
-    <div class="sheet-group">
-      <button id="actRename">Rename</button>
-      <button id="actSet">Set Count…</button>
-      <button id="actDelete" class="destructive">Delete</button>
-    </div>
-    <div class="sheet-cancel">
-      <button id="actCancel">Cancel</button>
-    </div>
-  </div>
-</div>
 
 <script>
 (() => {
@@ -443,11 +410,6 @@
   const $modal = document.getElementById("modal");
   const $cancelAdd = document.getElementById("cancelAdd");
   const $confirmAdd = document.getElementById("confirmAdd");
-  const $sheet = document.getElementById("sheet");
-  const $actRename = document.getElementById("actRename");
-  const $actSet = document.getElementById("actSet");
-  const $actDelete = document.getElementById("actDelete");
-  const $actCancel = document.getElementById("actCancel");
   const $dot = document.getElementById("dot");
   const $statusText = document.getElementById("statusText");
   const $export = document.getElementById("exportBtn");
@@ -456,7 +418,7 @@
   let ws = null;
   let items = [];
   let backoff = 500;
-  let sheetTarget = null;
+  let openRow = null;
 
   try {
     const cached = localStorage.getItem("shoe-counter:lastState");
@@ -511,13 +473,8 @@
   function render() {
     if (!items.length) {
       $list.innerHTML = `<div class="empty">No items yet</div>`;
+      openRow = null;
       return;
-    }
-
-    const flashState = new Map();
-    for (const el of $list.querySelectorAll(".row")) {
-      if (el.classList.contains("flash-up")) flashState.set(el.dataset.id, "flash-up");
-      if (el.classList.contains("flash-down")) flashState.set(el.dataset.id, "flash-down");
     }
 
     $list.innerHTML = "";
@@ -525,65 +482,200 @@
       const row = document.createElement("div");
       row.className = "row";
       row.dataset.id = item.id;
-      const flash = flashState.get(item.id);
-      if (flash) row.classList.add(flash);
 
-      const name = document.createElement("div");
-      name.className = "name";
-      name.textContent = item.name;
+      const actionsLeft = document.createElement("div");
+      actionsLeft.className = "row-actions left";
+      actionsLeft.innerHTML = `
+        <button class="action-btn action-rename" data-act="rename">Rename</button>
+        <button class="action-btn action-set" data-act="set">Count</button>
+      `;
 
-      const count = document.createElement("div");
-      count.className = "count";
-      count.textContent = item.count;
+      const actionsRight = document.createElement("div");
+      actionsRight.className = "row-actions right";
+      actionsRight.innerHTML = `
+        <button class="action-btn action-delete" data-act="delete">Delete</button>
+      `;
 
-      const menu = document.createElement("button");
-      menu.className = "menu-btn";
-      menu.type = "button";
-      menu.setAttribute("aria-label", "Options");
-      menu.textContent = "⋯";
-      menu.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openSheet(item);
-      });
+      const front = document.createElement("div");
+      front.className = "row-front";
+      front.innerHTML = `
+        <div class="name"></div>
+        <div class="count"></div>
+      `;
+      front.querySelector(".name").textContent = item.name;
+      front.querySelector(".count").textContent = item.count;
 
-      row.appendChild(name);
-      row.appendChild(count);
-      row.appendChild(menu);
+      row.appendChild(actionsLeft);
+      row.appendChild(actionsRight);
+      row.appendChild(front);
 
-      attachTapHandlers(row, item.id);
+      attachRowBehaviors(row, front, actionsLeft, actionsRight, item);
       $list.appendChild(row);
     }
   }
 
-  function attachTapHandlers(row, id) {
+  function closeRow(row) {
+    if (!row) return;
+    const front = row.querySelector(".row-front");
+    front.style.transition = "transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)";
+    front.style.transform = "translateX(0)";
+    const onEnd = () => {
+      row.classList.remove("swipe-active");
+      front.removeEventListener("transitionend", onEnd);
+    };
+    front.addEventListener("transitionend", onEnd);
+    if (openRow === row) openRow = null;
+  }
+
+  function snapRowOpen(row, direction) {
+    if (openRow && openRow !== row) closeRow(openRow);
+    row.classList.add("swipe-active");
+    const front = row.querySelector(".row-front");
+    const leftWidth = row.querySelector(".row-actions.left").offsetWidth;
+    const rightWidth = row.querySelector(".row-actions.right").offsetWidth;
+    front.style.transition = "transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)";
+    front.style.transform = direction === "left"
+      ? `translateX(${-rightWidth}px)`
+      : `translateX(${leftWidth}px)`;
+    openRow = row;
+  }
+
+  function attachRowBehaviors(row, front, actionsLeft, actionsRight, item) {
     let pendingUp = null;
     const DOUBLE_MS = 280;
+    const SWIPE_THRESHOLD = 8;
+    const TRIGGER_RATIO = 0.45;
 
-    row.addEventListener("click", (e) => {
-      if (e.target.closest(".menu-btn")) return;
+    let startX = 0, startY = 0;
+    let dragging = false;
+    let mode = null; // null | "swipe" | "scroll"
+    let startTranslate = 0;
+    let currentTranslate = 0;
+
+    function currentX() {
+      const m = front.style.transform.match(/translateX\((-?[\d.]+)px\)/);
+      return m ? parseFloat(m[1]) : 0;
+    }
+
+    front.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".action-btn")) return;
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      mode = null;
+      startTranslate = currentX();
+      front.style.transition = "none";
+      try { front.setPointerCapture(e.pointerId); } catch {}
+    });
+
+    front.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (mode === null) {
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+          mode = "scroll";
+          dragging = false;
+          front.style.transition = "transform 0.2s ease";
+          front.style.transform = `translateX(${startTranslate}px)`;
+          return;
+        }
+        if (Math.abs(dx) > SWIPE_THRESHOLD) {
+          mode = "swipe";
+        }
+      }
+
+      if (mode === "swipe") {
+        e.preventDefault();
+        row.classList.add("swipe-active");
+        const leftWidth = actionsLeft.offsetWidth;
+        const rightWidth = actionsRight.offsetWidth;
+        let x = startTranslate + dx;
+        // Rubber-band past the action width
+        if (x > leftWidth) x = leftWidth + (x - leftWidth) * 0.25;
+        if (x < -rightWidth) x = -rightWidth + (x + rightWidth) * 0.25;
+        currentTranslate = x;
+        front.style.transform = `translateX(${x}px)`;
+      }
+    });
+
+    front.addEventListener("pointerup", (e) => {
+      if (!dragging) { dragging = false; return; }
+      dragging = false;
+      try { front.releasePointerCapture(e.pointerId); } catch {}
+
+      if (mode === "swipe") {
+        const rightWidth = actionsRight.offsetWidth;
+        const leftWidth = actionsLeft.offsetWidth;
+        if (currentTranslate <= -rightWidth * TRIGGER_RATIO) {
+          snapRowOpen(row, "left");
+        } else if (currentTranslate >= leftWidth * TRIGGER_RATIO) {
+          snapRowOpen(row, "right");
+        } else {
+          closeRow(row);
+        }
+        return;
+      }
+
+      // Tap (no significant movement)
+      if (openRow === row) {
+        closeRow(row);
+        return;
+      }
+      if (openRow && openRow !== row) {
+        closeRow(openRow);
+        return;
+      }
 
       if (pendingUp !== null) {
         clearTimeout(pendingUp);
         pendingUp = null;
-        flash(row, "flash-down");
-        send({ type: "untap", id });
+        send({ type: "untap", id: item.id });
         return;
       }
-
       pendingUp = setTimeout(() => {
         pendingUp = null;
-        flash(row, "flash-up");
-        send({ type: "tap", id });
+        send({ type: "tap", id: item.id });
       }, DOUBLE_MS);
+    });
+
+    front.addEventListener("pointercancel", () => {
+      if (mode === "swipe") closeRow(row);
+      dragging = false;
+      mode = null;
+    });
+
+    // Action button handlers
+    actionsRight.addEventListener("click", (e) => {
+      const btn = e.target.closest(".action-btn");
+      if (!btn || btn.dataset.act !== "delete") return;
+      if (confirm(`Delete "${item.name}"?`)) {
+        send({ type: "delete", id: item.id });
+      }
+      closeRow(row);
+    });
+
+    actionsLeft.addEventListener("click", (e) => {
+      const btn = e.target.closest(".action-btn");
+      if (!btn) return;
+      if (btn.dataset.act === "rename") {
+        const name = prompt("New name:", item.name);
+        if (name && name.trim()) send({ type: "rename", id: item.id, name: name.trim() });
+      } else if (btn.dataset.act === "set") {
+        const v = prompt("Set count to:", String(item.count));
+        const n = Number(v);
+        if (Number.isFinite(n) && n >= 0) send({ type: "set", id: item.id, count: Math.floor(n) });
+      }
+      closeRow(row);
     });
   }
 
-  function flash(row, cls) {
-    row.classList.remove("flash-up", "flash-down");
-    void row.offsetWidth;
-    row.classList.add(cls);
-    setTimeout(() => row.classList.remove(cls), 220);
-  }
+  // Close any open swipe when tapping outside the list
+  document.addEventListener("pointerdown", (e) => {
+    if (!openRow) return;
+    if (!e.target.closest(".row")) closeRow(openRow);
+  });
 
   function openAddModal() {
     $modal.classList.add("open");
@@ -609,37 +701,6 @@
   $input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") submitAdd();
     else if (e.key === "Escape") closeAddModal();
-  });
-
-  function openSheet(item) {
-    sheetTarget = item;
-    $sheet.classList.add("open");
-  }
-  function closeSheet() {
-    sheetTarget = null;
-    $sheet.classList.remove("open");
-  }
-  $sheet.addEventListener("click", (e) => {
-    if (e.target === $sheet) closeSheet();
-  });
-  $actCancel.addEventListener("click", closeSheet);
-  $actRename.addEventListener("click", () => {
-    if (!sheetTarget) return;
-    const name = prompt("New name:", sheetTarget.name);
-    if (name && name.trim()) send({ type: "rename", id: sheetTarget.id, name: name.trim() });
-    closeSheet();
-  });
-  $actSet.addEventListener("click", () => {
-    if (!sheetTarget) return;
-    const v = prompt("Set count to:", String(sheetTarget.count));
-    const n = Number(v);
-    if (Number.isFinite(n) && n >= 0) send({ type: "set", id: sheetTarget.id, count: Math.floor(n) });
-    closeSheet();
-  });
-  $actDelete.addEventListener("click", () => {
-    if (!sheetTarget) return;
-    if (confirm(`Delete "${sheetTarget.name}"?`)) send({ type: "delete", id: sheetTarget.id });
-    closeSheet();
   });
 
   $export.addEventListener("click", () => {

@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+<title>Counter</title>
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --grouped-bg: #ffffff;
+    --label: #000000;
+    --secondary-label: #3c3c43;
+    --tertiary-label: #3c3c4399;
+    --separator: #c6c6c8;
+    --blue: #007aff;
+    --red: #ff3b30;
+    --fill: rgba(120, 120, 128, 0.16);
+    --fill-pressed: rgba(120, 120, 128, 0.28);
+    --bar-bg: rgba(249, 249, 249, 0.82);
+    --bar-border: rgba(0, 0, 0, 0.12);
+    --modal-bg: #ffffff;
+    --modal-button-bg: rgba(120, 120, 128, 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --grouped-bg: #1c1c1e;
+      --label: #ffffff;
+      --secondary-label: #ebebf5;
+      --tertiary-label: #ebebf599;
+      --separator: #38383a;
+      --blue: #0a84ff;
+      --red: #ff453a;
+      --fill: rgba(118, 118, 128, 0.24);
+      --fill-pressed: rgba(118, 118, 128, 0.40);
+      --bar-bg: rgba(28, 28, 30, 0.82);
+      --bar-border: rgba(255, 255, 255, 0.10);
+      --modal-bg: #2c2c2e;
+      --modal-button-bg: rgba(118, 118, 128, 0.24);
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--label);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  body {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 8px 0 calc(96px + env(safe-area-inset-bottom));
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 8px;
+  }
+  h1 {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: 0.37px;
+    margin: 0;
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--tertiary-label);
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red);
+    transition: background 0.2s;
+  }
+  .dot.live { background: #30d158; }
+
+  .list {
+    margin: 16px;
+    background: var(--grouped-bg);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    min-height: 56px;
+    padding: 10px 16px;
+    position: relative;
+    user-select: none;
+    -webkit-user-select: none;
+    background: var(--grouped-bg);
+    transition: background 0.12s ease;
+    cursor: pointer;
+  }
+  .row + .row::before {
+    content: "";
+    position: absolute;
+    left: 16px; right: 0; top: 0;
+    height: 0.5px;
+    background: var(--separator);
+  }
+  .row.pressed { background: var(--fill-pressed); }
+  .row.flash-up { animation: flashUp 220ms ease-out; }
+  .row.flash-down { animation: flashDown 220ms ease-out; }
+  @keyframes flashUp {
+    0% { background: rgba(48, 209, 88, 0.28); }
+    100% { background: var(--grouped-bg); }
+  }
+  @keyframes flashDown {
+    0% { background: rgba(255, 69, 58, 0.28); }
+    100% { background: var(--grouped-bg); }
+  }
+
+  .name {
+    font-size: 17px;
+    font-weight: 400;
+    color: var(--label);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .count {
+    font-variant-numeric: tabular-nums;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--blue);
+    min-width: 44px;
+    text-align: right;
+  }
+  .menu-btn {
+    background: transparent;
+    border: none;
+    color: var(--tertiary-label);
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .menu-btn:active { background: var(--fill); }
+
+  .empty {
+    text-align: center;
+    color: var(--tertiary-label);
+    padding: 80px 24px;
+    font-size: 17px;
+  }
+
+  /* iOS 26 Liquid Glass — each control is its own floating glass pill */
+  .toolbar {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    display: flex;
+    justify-content: center;
+    padding: 0 20px;
+    pointer-events: none;
+  }
+  .toolbar-inner {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 520px;
+  }
+
+  /* Shared glass surface for every floating control */
+  .glass {
+    position: relative;
+    isolation: isolate;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.70) 0%,
+        rgba(255, 255, 255, 0.35) 40%,
+        rgba(255, 255, 255, 0.20) 100%
+      ),
+      rgba(255, 255, 255, 0.18);
+    -webkit-backdrop-filter: saturate(180%) blur(28px);
+    backdrop-filter: saturate(180%) blur(28px);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.06) inset,
+      0 0 0 0.5px rgba(255, 255, 255, 0.5) inset,
+      0 0 0 0.5px rgba(0, 0, 0, 0.08),
+      0 8px 24px rgba(0, 0, 0, 0.14),
+      0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* Specular highlight arc across the top edge — fakes refraction */
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(120% 60% at 50% 0%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 60%);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .glass > * { position: relative; z-index: 2; }
+  .glass:active { transform: scale(0.96); }
+
+  @media (prefers-color-scheme: dark) {
+    .glass {
+      background:
+        linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.22) 0%,
+          rgba(255, 255, 255, 0.08) 40%,
+          rgba(255, 255, 255, 0.03) 100%
+        ),
+        rgba(60, 60, 67, 0.32);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.28) inset,
+        0 -1px 0 rgba(0, 0, 0, 0.30) inset,
+        0 0 0 0.5px rgba(255, 255, 255, 0.14) inset,
+        0 0 0 0.5px rgba(0, 0, 0, 0.50),
+        0 10px 30px rgba(0, 0, 0, 0.55),
+        0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+    .glass::before {
+      background:
+        radial-gradient(120% 60% at 50% 0%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 60%);
+    }
+  }
+
+  .icon-btn {
+    width: 52px; height: 52px;
+    border-radius: 26px;
+    border: none;
+    color: var(--blue);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .icon-btn.danger { color: var(--red); }
+
+  .primary {
+    flex: 1;
+    height: 52px;
+    padding: 0 20px;
+    font-size: 17px;
+    font-weight: 600;
+    border-radius: 26px;
+    border: none;
+    color: var(--blue);
+    cursor: pointer;
+    letter-spacing: -0.2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .primary::after {
+    content: "";
+    display: inline-block;
+    width: 16px; height: 16px;
+    background: currentColor;
+    -webkit-mask: center / contain no-repeat
+      url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13" stroke="black" stroke-width="2.2" stroke-linecap="round"/></svg>');
+            mask: center / contain no-repeat
+      url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13" stroke="black" stroke-width="2.2" stroke-linecap="round"/></svg>');
+    order: -1;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 100;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--modal-bg);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 280px;
+    overflow: hidden;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  }
+  .modal-body { padding: 20px 16px 16px; }
+  .modal h2 {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--label);
+  }
+  .modal p {
+    margin: 0 0 14px;
+    font-size: 13px;
+    color: var(--secondary-label);
+  }
+  .modal input {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    border-radius: 4px;
+    border: 0.5px solid var(--separator);
+    background: var(--bg);
+    color: var(--label);
+    outline: none;
+    text-align: center;
+  }
+  .modal input:focus { border-color: var(--blue); }
+  .modal-actions {
+    display: flex;
+    border-top: 0.5px solid var(--separator);
+  }
+  .modal-actions button {
+    flex: 1;
+    padding: 12px;
+    font-size: 17px;
+    background: transparent;
+    border: none;
+    color: var(--blue);
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .modal-actions button:active { background: var(--fill); }
+  .modal-actions button + button { border-left: 0.5px solid var(--separator); }
+  .modal-actions .confirm { font-weight: 600; }
+
+  /* iOS action sheet */
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 8px;
+    z-index: 100;
+  }
+  .sheet-backdrop.open { display: flex; }
+  .sheet {
+    width: 100%;
+    max-width: 540px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sheet-group, .sheet-cancel {
+    background: var(--modal-bg);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .sheet button {
+    width: 100%;
+    padding: 16px;
+    font-size: 20px;
+    background: transparent;
+    border: none;
+    color: var(--blue);
+    cursor: pointer;
+    min-height: 56px;
+  }
+  .sheet button + button { border-top: 0.5px solid var(--separator); }
+  .sheet button:active { background: var(--fill); }
+  .sheet .destructive { color: var(--red); }
+  .sheet-cancel button { font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Counter</h1>
+  <span class="status"><span id="dot" class="dot"></span><span id="statusText">connecting…</span></span>
+</header>
+
+<div id="list" class="list"></div>
+
+<div class="toolbar">
+  <div class="toolbar-inner">
+    <button id="exportBtn" class="icon-btn glass" aria-label="Export">⤓</button>
+    <button id="addBtn" class="primary glass">Add Item</button>
+    <button id="resetBtn" class="icon-btn glass danger" aria-label="Reset counts">↺</button>
+  </div>
+</div>
+
+<div id="modal" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-body">
+      <h2>New Item</h2>
+      <p>Enter a name for this item.</p>
+      <input id="newItem" type="text" placeholder="e.g. Nike 42" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" id="cancelAdd">Cancel</button>
+      <button class="confirm" id="confirmAdd">Add</button>
+    </div>
+  </div>
+</div>
+
+<div id="sheet" class="sheet-backdrop" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <div class="sheet-group">
+      <button id="actRename">Rename</button>
+      <button id="actSet">Set Count…</button>
+      <button id="actDelete" class="destructive">Delete</button>
+    </div>
+    <div class="sheet-cancel">
+      <button id="actCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $list = document.getElementById("list");
+  const $input = document.getElementById("newItem");
+  const $add = document.getElementById("addBtn");
+  const $modal = document.getElementById("modal");
+  const $cancelAdd = document.getElementById("cancelAdd");
+  const $confirmAdd = document.getElementById("confirmAdd");
+  const $sheet = document.getElementById("sheet");
+  const $actRename = document.getElementById("actRename");
+  const $actSet = document.getElementById("actSet");
+  const $actDelete = document.getElementById("actDelete");
+  const $actCancel = document.getElementById("actCancel");
+  const $dot = document.getElementById("dot");
+  const $statusText = document.getElementById("statusText");
+  const $export = document.getElementById("exportBtn");
+  const $reset = document.getElementById("resetBtn");
+
+  let ws = null;
+  let items = [];
+  let backoff = 500;
+  let sheetTarget = null;
+
+  try {
+    const cached = localStorage.getItem("shoe-counter:lastState");
+    if (cached) {
+      items = JSON.parse(cached);
+      render();
+    }
+  } catch {}
+
+  function setStatus(connected) {
+    $dot.classList.toggle("live", connected);
+    $statusText.textContent = connected ? "live" : "connecting…";
+  }
+
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+    ws.addEventListener("open", () => {
+      setStatus(true);
+      backoff = 500;
+    });
+
+    ws.addEventListener("message", (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      if (msg.type === "state") {
+        items = msg.items;
+        try {
+          localStorage.setItem("shoe-counter:lastState", JSON.stringify(items));
+        } catch {}
+        render();
+      }
+    });
+
+    const closed = () => {
+      setStatus(false);
+      ws = null;
+      setTimeout(connect, backoff);
+      backoff = Math.min(backoff * 2, 5000);
+    };
+    ws.addEventListener("close", closed);
+    ws.addEventListener("error", () => { try { ws.close(); } catch {} });
+  }
+
+  function send(message) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    }
+  }
+
+  function render() {
+    if (!items.length) {
+      $list.innerHTML = `<div class="empty">No items yet</div>`;
+      return;
+    }
+
+    const flashState = new Map();
+    for (const el of $list.querySelectorAll(".row")) {
+      if (el.classList.contains("flash-up")) flashState.set(el.dataset.id, "flash-up");
+      if (el.classList.contains("flash-down")) flashState.set(el.dataset.id, "flash-down");
+    }
+
+    $list.innerHTML = "";
+    for (const item of items) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.dataset.id = item.id;
+      const flash = flashState.get(item.id);
+      if (flash) row.classList.add(flash);
+
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = item.name;
+
+      const count = document.createElement("div");
+      count.className = "count";
+      count.textContent = item.count;
+
+      const menu = document.createElement("button");
+      menu.className = "menu-btn";
+      menu.type = "button";
+      menu.setAttribute("aria-label", "Options");
+      menu.textContent = "⋯";
+      menu.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openSheet(item);
+      });
+
+      row.appendChild(name);
+      row.appendChild(count);
+      row.appendChild(menu);
+
+      attachTapHandlers(row, item.id);
+      $list.appendChild(row);
+    }
+  }
+
+  function attachTapHandlers(row, id) {
+    let pendingUp = null;
+    const DOUBLE_MS = 280;
+
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".menu-btn")) return;
+
+      if (pendingUp !== null) {
+        clearTimeout(pendingUp);
+        pendingUp = null;
+        flash(row, "flash-down");
+        send({ type: "untap", id });
+        return;
+      }
+
+      pendingUp = setTimeout(() => {
+        pendingUp = null;
+        flash(row, "flash-up");
+        send({ type: "tap", id });
+      }, DOUBLE_MS);
+    });
+  }
+
+  function flash(row, cls) {
+    row.classList.remove("flash-up", "flash-down");
+    void row.offsetWidth;
+    row.classList.add(cls);
+    setTimeout(() => row.classList.remove(cls), 220);
+  }
+
+  function openAddModal() {
+    $modal.classList.add("open");
+    $input.value = "";
+    setTimeout(() => $input.focus(), 50);
+  }
+  function closeAddModal() {
+    $modal.classList.remove("open");
+  }
+  function submitAdd() {
+    const name = $input.value.trim();
+    if (!name) return;
+    send({ type: "add", name });
+    closeAddModal();
+  }
+
+  $add.addEventListener("click", openAddModal);
+  $cancelAdd.addEventListener("click", closeAddModal);
+  $confirmAdd.addEventListener("click", submitAdd);
+  $modal.addEventListener("click", (e) => {
+    if (e.target === $modal) closeAddModal();
+  });
+  $input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitAdd();
+    else if (e.key === "Escape") closeAddModal();
+  });
+
+  function openSheet(item) {
+    sheetTarget = item;
+    $sheet.classList.add("open");
+  }
+  function closeSheet() {
+    sheetTarget = null;
+    $sheet.classList.remove("open");
+  }
+  $sheet.addEventListener("click", (e) => {
+    if (e.target === $sheet) closeSheet();
+  });
+  $actCancel.addEventListener("click", closeSheet);
+  $actRename.addEventListener("click", () => {
+    if (!sheetTarget) return;
+    const name = prompt("New name:", sheetTarget.name);
+    if (name && name.trim()) send({ type: "rename", id: sheetTarget.id, name: name.trim() });
+    closeSheet();
+  });
+  $actSet.addEventListener("click", () => {
+    if (!sheetTarget) return;
+    const v = prompt("Set count to:", String(sheetTarget.count));
+    const n = Number(v);
+    if (Number.isFinite(n) && n >= 0) send({ type: "set", id: sheetTarget.id, count: Math.floor(n) });
+    closeSheet();
+  });
+  $actDelete.addEventListener("click", () => {
+    if (!sheetTarget) return;
+    if (confirm(`Delete "${sheetTarget.name}"?`)) send({ type: "delete", id: sheetTarget.id });
+    closeSheet();
+  });
+
+  $export.addEventListener("click", () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      total: items.reduce((s, i) => s + i.count, 0),
+      items: items.map(({ id, name, count }) => ({ id, name, count })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    a.download = `counts-${stamp}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  $reset.addEventListener("click", () => {
+    if (confirm("Reset all counts to 0?")) {
+      send({ type: "resetAll" });
+    }
+  });
+
+  connect();
+})();
+</script>
+</body>
+</html>

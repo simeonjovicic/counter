@@ -470,6 +470,13 @@
     }
   }
 
+  // Short haptic tap on +1. Works on Android; iOS Safari ignores it (no Web Vibration API).
+  function haptic() {
+    if (navigator.vibrate) {
+      try { navigator.vibrate(12); } catch {}
+    }
+  }
+
   function render() {
     if (!items.length) {
       $list.innerHTML = `<div class="empty">No items yet</div>`;
@@ -636,6 +643,7 @@
       }
       pendingUp = setTimeout(() => {
         pendingUp = null;
+        haptic();
         send({ type: "tap", id: item.id });
       }, DOUBLE_MS);
     });

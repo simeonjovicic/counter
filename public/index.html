@@ -368,6 +368,72 @@
   .modal-actions button + button { border-left: 0.5px solid var(--separator); }
   .modal-actions .confirm { font-weight: 600; }
 
+  .size-modal { max-width: 340px; }
+  .size-title {
+    margin: 0 0 14px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--label);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .size-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .size-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 8px 12px;
+    border-radius: 12px;
+    background: var(--modal-button-bg);
+    border: none;
+    color: var(--label);
+    cursor: pointer;
+    min-height: 78px;
+    font-family: inherit;
+    transition: transform 0.1s;
+  }
+  .size-tile:active { transform: scale(0.96); }
+  .size-tile .size-label {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.1px;
+  }
+  .size-tile .size-count {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--blue);
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+    line-height: 1.1;
+  }
+  .size-undo {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    background: transparent;
+    color: var(--tertiary-label);
+    border: none;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+  .size-undo:active { background: var(--fill); color: var(--label); }
+
 </style>
 </head>
 <body>
@@ -392,11 +458,23 @@
     <div class="modal-body">
       <h2>New Item</h2>
       <p>Enter a name for this item.</p>
-      <input id="newItem" type="text" placeholder="e.g. Nike 42" autocomplete="off" />
+      <input id="newItem" type="text" placeholder="e.g. Sport soft high SBLABK7" autocomplete="off" />
     </div>
     <div class="modal-actions">
       <button class="cancel" id="cancelAdd">Cancel</button>
       <button class="confirm" id="confirmAdd">Add</button>
+    </div>
+  </div>
+</div>
+
+<div id="sizeModal" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal size-modal">
+    <div class="modal-body">
+      <h2 class="size-title" id="sizeTitle"></h2>
+      <div class="size-grid" id="sizeGrid"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="confirm" id="closeSize">Done</button>
     </div>
   </div>
 </div>
@@ -414,11 +492,18 @@
   const $statusText = document.getElementById("statusText");
   const $export = document.getElementById("exportBtn");
   const $reset = document.getElementById("resetBtn");
+  const $sizeModal = document.getElementById("sizeModal");
+  const $sizeTitle = document.getElementById("sizeTitle");
+  const $sizeGrid = document.getElementById("sizeGrid");
+  const $closeSize = document.getElementById("closeSize");
+
+  const SIZES = ["36/37", "38/39", "40/41", "42/43", "44/45", "46/47"];
 
   let ws = null;
   let items = [];
   let backoff = 500;
   let openRow = null;
+  let pickerItemId = null;
 
   try {
     const cached = localStorage.getItem("shoe-counter:lastState");
@@ -451,6 +536,7 @@
           localStorage.setItem("shoe-counter:lastState", JSON.stringify(items));
         } catch {}
         render();
+        if (pickerItemId) renderSizeGrid();
       }
     });
 
@@ -548,8 +634,6 @@
   }
 
   function attachRowBehaviors(row, front, actionsLeft, actionsRight, item) {
-    let pendingUp = null;
-    const DOUBLE_MS = 280;
     const SWIPE_THRESHOLD = 8;
     const TRIGGER_RATIO = 0.45;
 
@@ -635,17 +719,7 @@
         return;
       }
 
-      if (pendingUp !== null) {
-        clearTimeout(pendingUp);
-        pendingUp = null;
-        send({ type: "untap", id: item.id });
-        return;
-      }
-      pendingUp = setTimeout(() => {
-        pendingUp = null;
-        haptic();
-        send({ type: "tap", id: item.id });
-      }, DOUBLE_MS);
+      openSizePicker(item.id);
     });
 
     front.addEventListener("pointercancel", () => {
@@ -682,7 +756,56 @@
   // Close any open swipe when tapping outside the list
   document.addEventListener("pointerdown", (e) => {
     if (!openRow) return;
+    if (e.target.closest(".modal-backdrop")) return;
     if (!e.target.closest(".row")) closeRow(openRow);
+  });
+
+  function openSizePicker(itemId) {
+    pickerItemId = itemId;
+    renderSizeGrid();
+    $sizeModal.classList.add("open");
+  }
+  function closeSizePicker() {
+    pickerItemId = null;
+    $sizeModal.classList.remove("open");
+  }
+  function renderSizeGrid() {
+    const item = items.find((i) => i.id === pickerItemId);
+    if (!item) { closeSizePicker(); return; }
+    $sizeTitle.textContent = item.name;
+    const sizes = item.sizes || {};
+    $sizeGrid.innerHTML = "";
+    for (const size of SIZES) {
+      const tile = document.createElement("button");
+      tile.className = "size-tile";
+      tile.dataset.size = size;
+      const count = sizes[size] || 0;
+      tile.innerHTML = `
+        <button class="size-undo" data-undo="1" aria-label="Undo">−</button>
+        <span class="size-label"></span>
+        <span class="size-count"></span>
+      `;
+      tile.querySelector(".size-label").textContent = size;
+      tile.querySelector(".size-count").textContent = count;
+      $sizeGrid.appendChild(tile);
+    }
+  }
+
+  $sizeGrid.addEventListener("click", (e) => {
+    if (!pickerItemId) return;
+    const tile = e.target.closest(".size-tile");
+    if (!tile) return;
+    const size = tile.dataset.size;
+    if (e.target.closest("[data-undo]")) {
+      send({ type: "sizeUntap", id: pickerItemId, size });
+      return;
+    }
+    haptic();
+    send({ type: "sizeTap", id: pickerItemId, size });
+  });
+  $closeSize.addEventListener("click", closeSizePicker);
+  $sizeModal.addEventListener("click", (e) => {
+    if (e.target === $sizeModal) closeSizePicker();
   });
 
   function openAddModal() {

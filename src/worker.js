@@ -1,5 +1,23 @@
 import { DurableObject } from "cloudflare:workers";
 
+const DEFAULT_SIZES = ["36/37", "38/39", "40/41", "42/43", "44/45", "46/47"];
+
+function ensureSizes(item) {
+  if (!item.sizes || typeof item.sizes !== "object") {
+    item.sizes = Object.fromEntries(DEFAULT_SIZES.map((s) => [s, 0]));
+  }
+  for (const s of DEFAULT_SIZES) {
+    if (typeof item.sizes[s] !== "number") item.sizes[s] = 0;
+  }
+}
+
+function totalCount(item) {
+  if (!item.sizes) return item.count ?? 0;
+  let n = 0;
+  for (const v of Object.values(item.sizes)) n += v;
+  return n;
+}
+
 export class Counter extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -9,6 +27,10 @@ export class Counter extends DurableObject {
   async loadItems() {
     if (this.items === null) {
       this.items = (await this.ctx.storage.get("items")) ?? [];
+      for (const item of this.items) {
+        ensureSizes(item);
+        item.count = totalCount(item);
+      }
     }
     return this.items;
   }
@@ -54,24 +76,34 @@ export class Counter extends DurableObject {
       case "add": {
         const name = (msg.name ?? "").toString().trim();
         if (!name) return;
-        items.push({
+        const item = {
           id: crypto.randomUUID(),
           name,
+          sizes: Object.fromEntries(DEFAULT_SIZES.map((s) => [s, 0])),
           count: 0,
           createdAt: Date.now(),
-        });
+        };
+        items.push(item);
         break;
       }
-      case "tap": {
+      case "sizeTap": {
         const item = items.find((i) => i.id === msg.id);
         if (!item) return;
-        item.count += 1;
+        const size = String(msg.size ?? "");
+        if (!DEFAULT_SIZES.includes(size)) return;
+        ensureSizes(item);
+        item.sizes[size] += 1;
+        item.count = totalCount(item);
         break;
       }
-      case "untap": {
+      case "sizeUntap": {
         const item = items.find((i) => i.id === msg.id);
         if (!item) return;
-        item.count = Math.max(0, item.count - 1);
+        const size = String(msg.size ?? "");
+        if (!DEFAULT_SIZES.includes(size)) return;
+        ensureSizes(item);
+        item.sizes[size] = Math.max(0, item.sizes[size] - 1);
+        item.count = totalCount(item);
         break;
       }
       case "set": {
@@ -79,6 +111,8 @@ export class Counter extends DurableObject {
         if (!item) return;
         const n = Number(msg.count);
         if (!Number.isFinite(n) || n < 0) return;
+        ensureSizes(item);
+        for (const s of DEFAULT_SIZES) item.sizes[s] = 0;
         item.count = Math.floor(n);
         break;
       }
@@ -97,7 +131,11 @@ export class Counter extends DurableObject {
         break;
       }
       case "resetAll": {
-        for (const item of items) item.count = 0;
+        for (const item of items) {
+          ensureSizes(item);
+          for (const s of DEFAULT_SIZES) item.sizes[s] = 0;
+          item.count = 0;
+        }
         break;
       }
       case "clearAll": {
